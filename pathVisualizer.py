@@ -1,3 +1,4 @@
+import sys
 import math
 import pygame
 from queue import PriorityQueue
@@ -5,6 +6,7 @@ from queue import PriorityQueue
 WIDTH = 800
 WIN = pygame.display.set_mode((WIDTH, WIDTH))
 pygame.display.set_caption("Path Finding Visualizer")
+algorithms = set(["a_star", "djikstra"])
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -87,7 +89,6 @@ class Node:
 
 
 def distance(p1, p2):
-    #manhattan distance calculation
     x1, y1 = p1
     x2, y2 = p2
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
@@ -144,6 +145,45 @@ def a_star_algorithm(draw, grid, start, end):
     return False
 
 
+def djikstra_algorithm(draw, grid, start, end):
+    count = 0
+    queue = PriorityQueue()
+    queue.put((0, count, start))
+    previous_node = {}
+    g_score = {node: float('inf') for row in grid for node in row}
+    g_score[start] = 0
+    queue_hash = {start}
+
+    while queue:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+
+        current = queue.get()[2]
+        queue_hash.remove(current)
+
+        if current == end: # makes the necessary path
+            reconstruct_path(previous_node, end, draw)
+            start.make_start()
+            end.make_end()
+            return True
+
+        for neighbor in current.neighbors:
+            n_g_score = g_score[current] + 1 # adds weight of path assuming it is 1
+
+            if n_g_score < g_score[neighbor]:
+                previous_node[neighbor] = current
+                g_score[neighbor] = n_g_score
+                if neighbor not in queue_hash:
+                    count += 1
+                    queue.put((g_score[neighbor], count, neighbor))
+                    queue_hash.add(neighbor)
+                    neighbor.make_open()
+        draw()
+        if current != start:
+            current.make_closed()
+    return False
+
 def make_grid(rows, width):
     grid = []
     gap = width // rows
@@ -180,19 +220,20 @@ def get_clicked_pos(pos, rows, width):
     return row, col
 
 
-def main(window, width):
-    ROWS = 25
+def visualize(window, width, rows, algorithm):
+    ROWS = rows
     grid = make_grid(ROWS, width)
 
     start = end = None
     run = True
+    path_made = False
     while run:
         draw(window, grid, ROWS, width)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
 
-            if pygame.mouse.get_pressed()[0]: # if left mouse button is clicked
+            if not path_made and pygame.mouse.get_pressed()[0]: # if left mouse button is clicked
                 pos = pygame.mouse.get_pos()
                 row, col = get_clicked_pos(pos, ROWS, width)
                 node = grid[row][col]
@@ -207,7 +248,7 @@ def main(window, width):
                 elif node != start and node != end:
                     node.make_barrier()
 
-            elif pygame.mouse.get_pressed()[2]: # if right mouse button is clicked
+            elif not path_made and pygame.mouse.get_pressed()[2]: # if right mouse button is clicked
                 pos = pygame.mouse.get_pos()
                 row, col = get_clicked_pos(pos, ROWS, width)
                 node = grid[row][col]
@@ -218,30 +259,38 @@ def main(window, width):
                     end = None
 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and start and end:
+                if not path_made and event.key == pygame.K_SPACE and start and end:
                     for row in grid:
                         for node in row:
                             node.update_neighbors(grid)
 
-                    a_star_algorithm(lambda: draw(window, grid, ROWS, width), grid, start, end)
-
+                    if algorithm == "a_star":
+                        a_star_algorithm(lambda: draw(window, grid, ROWS, width), grid, start, end)
+                    elif algorithm == "djikstra":
+                        djikstra_algorithm(lambda: draw(window, grid, ROWS, width), grid, start, end)
+                    path_made = True
                 if event.key == pygame.K_c:
+                    path_made = False
                     start = None
                     end = None
                     grid = make_grid(ROWS, width)
 
     pygame.quit()
 
-main(WIN, WIDTH)
+
+def main():
+    args = sys.argv[1:]
+    rows = int(args[0])
+    algorithm = args[1]
+    if rows < 2 or rows > 50:
+        raise Exception("Invalid row count!")
+    elif algorithm not in algorithms:
+        raise Exception("Invalid algorithm name! Current valid algorithms are: " + str(algorithms))
+    visualize(WIN, WIDTH, rows, algorithm)
 
 
-
-
-
-
-
-
-
+if __name__ == '__main__':
+    main()
 
 
 
