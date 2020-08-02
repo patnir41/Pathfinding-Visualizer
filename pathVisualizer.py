@@ -17,6 +17,7 @@ ORANGE = (255, 165, 0)
 GREY = (128, 128, 128)
 TURQUOISE = (64, 224, 208)
 
+
 class Node:
     def __init__(self, row, col, width, row_count):
         self.row = row
@@ -55,7 +56,7 @@ class Node:
     def make_open(self):
         self.color = GREEN
 
-    def make_close(self):
+    def make_closed(self):
         self.color = RED
 
     def make_barrier(self):
@@ -71,17 +72,77 @@ class Node:
         pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.width))
 
     def update_neighbors(self, grid):
-        pass
+        self.neighbors = []
+        if self.row < self.row_count - 1 and not grid[self.row + 1][self.col].is_barrier(): # down
+            self.neighbors.append(grid[self.row + 1][self.col])
+        if self.row > 0 and not grid[self.row - 1][self.col].is_barrier(): # up
+            self.neighbors.append(grid[self.row - 1][self.col])
+        if self.col > 0 and not grid[self.row][self.col - 1].is_barrier(): # left
+            self.neighbors.append(grid[self.row][self.col - 1])
+        if self.col < self.row_count - 1 and not grid[self.row][self.col + 1].is_barrier(): # right
+            self.neighbors.append(grid[self.row][self.col + 1])
 
     def __lt__(self, other):
         return False
 
 
-def h(p1, p2):
+def distance(p1, p2):
     #manhattan distance calculation
     x1, y1 = p1
     x2, y2 = p2
-    return abs(x1 - x2) + abs(y1 - y2)
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+
+def reconstruct_path(prev_nodes, current, draw):
+    while current in prev_nodes:
+        current = prev_nodes[current]
+        current.make_path()
+        draw()
+
+
+def a_star_algorithm(draw, grid, start, end):
+    count = 0
+    queue = PriorityQueue()
+    queue.put((0, count, start))
+    previous_node = {}
+    g_score = {node: float('inf') for row in grid for node in row}
+    g_score[start] = 0
+    f_score = {node: float('inf') for row in grid for node in row}
+    f_score[start] = distance(start.get_pos(), end.get_pos())
+
+    queue_hash = {start}
+
+    while queue:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+
+        current = queue.get()[2]
+        queue_hash.remove(current)
+
+        if current == end: # makes the necessary path
+            reconstruct_path(previous_node, end, draw)
+            start.make_start()
+            end.make_end()
+            return True
+
+        for neighbor in current.neighbors:
+            n_g_score = g_score[current] + 1 # adds weight of path assuming it is 1
+
+            if n_g_score < g_score[neighbor]:
+                previous_node[neighbor] = current
+                g_score[neighbor] = n_g_score
+                f_score[neighbor] = n_g_score + distance(neighbor.get_pos(), end.get_pos())
+                if neighbor not in queue_hash:
+                    count += 1
+                    queue.put((f_score[neighbor], count, neighbor))
+                    queue_hash.add(neighbor)
+                    neighbor.make_open()
+        draw()
+        if current != start:
+            current.make_closed()
+    return False
+
 
 def make_grid(rows, width):
     grid = []
@@ -92,12 +153,14 @@ def make_grid(rows, width):
             grid[i].append(Node(i, j, gap, rows))
     return grid
 
+
 def draw_grid(window, rows, width):
     gap = width // rows
     for i in range(rows):
         pygame.draw.line(window, GREY, (0, i * gap), (width, i * gap))
         for j in range(rows):
             pygame.draw.line(window, GREY, (j * gap, 0), (j * gap, width))
+
 
 def draw(window, grid, rows, width):
     window.fill(WHITE)
@@ -108,6 +171,7 @@ def draw(window, grid, rows, width):
     draw_grid(window, rows, width)
     pygame.display.update()
 
+
 def get_clicked_pos(pos, rows, width):
     gap = width // rows
     y, x = pos
@@ -115,21 +179,18 @@ def get_clicked_pos(pos, rows, width):
     col = x // gap
     return row, col
 
+
 def main(window, width):
-    ROWS = 20
+    ROWS = 25
     grid = make_grid(ROWS, width)
 
     start = end = None
     run = True
-    started = False
     while run:
         draw(window, grid, ROWS, width)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
-
-            if started:
-                continue
 
             if pygame.mouse.get_pressed()[0]: # if left mouse button is clicked
                 pos = pygame.mouse.get_pos()
@@ -139,7 +200,7 @@ def main(window, width):
                     start = node
                     start.make_start()
 
-                elif not end:
+                elif not end and node != start:
                     end = node
                     end.make_end()
 
@@ -150,8 +211,25 @@ def main(window, width):
                 pos = pygame.mouse.get_pos()
                 row, col = get_clicked_pos(pos, ROWS, width)
                 node = grid[row][col]
-                if node != start and node != end:
-                    node.reset()
+                node.reset()
+                if node == start:
+                    start = None
+                if node == end:
+                    end = None
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and start and end:
+                    for row in grid:
+                        for node in row:
+                            node.update_neighbors(grid)
+
+                    a_star_algorithm(lambda: draw(window, grid, ROWS, width), grid, start, end)
+
+                if event.key == pygame.K_c:
+                    start = None
+                    end = None
+                    grid = make_grid(ROWS, width)
+
     pygame.quit()
 
 main(WIN, WIDTH)
